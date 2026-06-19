@@ -1,54 +1,82 @@
 USE GimnasioDB;
 GO
 
+-- SUCURSAL
 INSERT INTO SUCURSAL (nombre, direccion, hora_inicio, hora_fin) VALUES
 ('Gimnasio Los Monstruos', 'Calle Falsa 123', '06:00:00', '23:00:00'),
 ('Gimnasio Los Fierros', 'Av. Siempreviva 742', '07:00:00', '22:00:00');
 
+-- PERSONA 
 INSERT INTO PERSONA (id_sucursal, nombre, apellido, fecha_nacimiento, telefono, email) VALUES
 (1, 'Arnold', 'Schwarzenegger', '1947-07-30', '1155550001', 'arnold@gym.com'),
 (1, 'Ronnie', 'Coleman', '1964-05-13', '1155550002', 'ronnie@gym.com'),
 (1, 'Pepe', 'Honguito', '1995-10-10', '1155550003', 'pepe@hotmail.com'),
-(1, 'Cacho', 'Castaña', '1980-06-11', '1155550004', 'cacho@gmail.com');
+(1, 'Cacho', 'Castaña', '1980-06-11', '1155550004', 'cacho@gmail.com'),
+(1, 'Mariela', 'Funes', '1990-03-22', '1155550005', 'mariela@gmail.com'),
+(1, 'Diego', 'Roldan', '1988-12-01', '1155550006', 'diego@gmail.com');
 
-INSERT INTO PROFESOR (id_sucursal, id_persona) VALUES
-(1, 1),
-(1, 2);
+-- PROFESOR 
+INSERT INTO PROFESOR (id_persona) VALUES
+(1), -- Arnold
+(2); -- Ronnie
 
-INSERT INTO SOCIO (id_sucursal, id_persona) VALUES
-(1, 3),
-(1, 4);
+-- SOCIO 
+INSERT INTO SOCIO (id_persona) VALUES
+(3), -- Pepe
+(4), -- Cacho
+(5), -- Mariela
+(6); -- Diego
 
-INSERT INTO INGRESO (id_sucursal, id_persona, id_socio, fecha_hora, estado) VALUES
-(1, 3, 1, '2026-06-18 08:00:00', 'Permitido'),
-(1, 4, 2, '2026-06-18 09:30:00', 'Permitido');
-
+-- METODO_PAGO
 INSERT INTO METODO_PAGO (tipo_metodo, nombre_metodo) VALUES
-('Físico', 'Efectivo USD'),
+('Físico', 'Efectivo'),
 ('Digital', 'MercadoPago'),
-('Cripto', 'USDC Red Solana');
+('Tarjeta', 'Débito');
 
+-- PLAN
 INSERT INTO [PLAN] (nombre, duracion_meses, precio_plan) VALUES
-('Plan Hulk', 1, 15000.00),
-('Plan Saiyajin', 6, 80000.00);
+('Plan Musculación', 1, 15000.00),
+('Plan Crossfit', 1, 18000.00),
+('Plan Libre', 1, 25000.00),
+('Plan Libre 6 Meses', 6, 130000.00),
+('Plan Libre 12 Meses', 12, 240000.00);
 
-INSERT INTO PAGO (id_plan, id_metodo, id_sucursal, id_persona, id_socio, fecha_pago, fecha_vencimiento, precio_con_IVA, precio_sin_IVA, pago_final, descuento, motivo_descuento) VALUES
-(1, 2, 1, 3, 1, '2026-06-01', '2026-07-01', 15000.00, 12396.69, 15000.00, 0, NULL),
-(2, 3, 1, 4, 2, '2026-06-10', '2026-12-10', 80000.00, 66115.70, 75000.00, 5000, 'Promo pago en USDC');
+-- CLASE
+INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax) VALUES
+(1, 'Lunes', '08:00:00', '09:00:00', 10),
+(1, 'Miercoles', '08:00:00', '09:00:00', 10),
+(2, 'Martes', '18:00:00', '19:00:00', 15),
+(2, 'Jueves', '18:00:00', '19:00:00', 15);
 
-INSERT INTO CLASE (id_sucursal, id_persona, id_profesor, diasemana, hora_inicio, hora_fin, cupomax) VALUES
-(1, 1, 1, 'Lunes', '10:00:00', '11:00:00', 20),
-(1, 2, 2, 'Miercoles', '18:00:00', '19:00:00', 30);
+-- TURNOS_PROFESOR
+INSERT INTO TURNOS_PROFESOR (id_profesor, dia_semana, hora_inicio, hora_fin) VALUES
+(1, 'Lunes', '06:00:00', '12:00:00'),
+(1, 'Miercoles', '06:00:00', '12:00:00'),
+(2, 'Martes', '14:00:00', '22:00:00'),
+(2, 'Jueves', '14:00:00', '22:00:00');
 
-INSERT INTO PLANES_CLASES (id_sucursal, id_persona, id_profesor, id_clase, id_plan) VALUES
-(1, 1, 1, 1, 1),
-(1, 2, 2, 2, 2);
+-- PLANES_CLASES (planes que dan acceso a Crossfit: Crossfit, Libre, Libre 6m, Libre 12m -> ids 2,3,4,5)
+INSERT INTO PLANES_CLASES (id_clase, id_plan) VALUES
+(1, 2), (1, 3), (1, 4), (1, 5),
+(2, 2), (2, 3), (2, 4), (2, 5),
+(3, 2), (3, 3), (3, 4), (3, 5),
+(4, 2), (4, 3), (4, 4), (4, 5);
 
-INSERT INTO TURNOS_PROFESOR (id_sucursal, id_persona, id_profesor, dia_semana, hora_inicio, hora_fin) VALUES
-(1, 1, 1, '2026-06-22', '08:00:00', '14:00:00'),
-(1, 2, 2, '2026-06-24', '16:00:00', '22:00:00');
+-- PAGO 
+INSERT INTO PAGO (id_plan, id_metodo, id_socio, fecha_pago, fecha_vencimiento, precio_con_IVA, precio_sin_IVA, pago_final, descuento, motivo_descuento) VALUES
+(1, 1, 1, '2026-06-01', '2026-07-01', 15000.00, 12396.69, 15000.00, 0, NULL),
+(3, 2, 2, '2026-06-10', '2026-07-10', 25000.00, 20661.16, 25000.00, 0, NULL),
+(4, 3, 3, '2026-05-15', '2026-11-15', 130000.00, 107438.02, 125000.00, 5000, 'Promo débito'),
+(2, 1, 4, '2026-06-05', '2026-07-05', 18000.00, 14876.03, 18000.00, 0, NULL);
 
-INSERT INTO INSCRIPTOACLASE (id_sucursal_socio, id_persona_socio, id_socio, id_sucursal_clase, id_persona_clase, id_profesor_clase, id_clase, fecha_inscripcion) VALUES
-(1, 3, 1, 1, 1, 1, 1, '2026-06-15 10:00:00'),
-(1, 4, 2, 1, 2, 2, 2, '2026-06-16 11:30:00');
+-- INGRESO
+INSERT INTO INGRESO (id_socio, fecha_hora, estado) VALUES
+(1, '2026-06-18 08:00:00', 'Autorizado'),
+(2, '2026-06-18 09:30:00', 'Autorizado'),
+(3, '2026-06-18 23:30:00', 'Denegado');
+
+-- INSCRIPTOACLASE (socio 2 tiene plan Libre, socio 3 tiene plan Libre 6m -> ambos pueden anotarse a Crossfit)
+INSERT INTO INSCRIPTOACLASE (id_socio, id_clase, fecha_inscripcion) VALUES
+(2, 1, '2026-06-15 10:00:00'),
+(3, 3, '2026-06-16 11:30:00');
 GO
