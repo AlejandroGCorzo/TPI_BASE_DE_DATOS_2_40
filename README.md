@@ -13,3 +13,4 @@ El sistema automatiza la administración de socios, planes (Musculación y Cross
 * `CreacionDB/`: Contiene los scripts SQL para la creación y carga inicial de la base de datos en SQL Server.
   * `01_DDL_Estructura.sql`: Script de creación de tablas y relaciones (PK, FK).
   * `02_DML_Datos.sql`: Script de inserción de datos iniciales (planes, métodos de pago, profesores, etc.).
+  * `03_Vistas.sql`: Script con las vistas de reportes para el dueño del gimnasio (recaudación mensual, pérdidas, recaudación por método de pago, socios con plan próximo a vencer y socios con plan vencido).
