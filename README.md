@@ -12,21 +12,21 @@ El sistema automatiza y centraliza la información necesaria para administrar lo
 
 ### Reglas Clave:
 * **Horario de operación**: El gimnasio opera en el horario de 6:00 a 23:00 horas.
-* **Simultaneidad de planes**: Un socio puede contratar ambos planes (Musculación y Crossfit) de forma simultánea, y el sistema gestiona de forma independiente la vigencia de cada uno.
+* **Simultaneidad de planes**: Un socio puede contratar ambos planes (Musculación y Crossfit) de forma simultánea, el plan Libre.
 * **Disciplinas por plan**:
-  * Los planes de 6 y 12 meses incluyen automáticamente ambas disciplinas (Musculación y Crossfit).
-  * El plan mensual permite elegir entre Musculación, Crossfit o Ambos.
+  * Los planes de 6 y 12 meses incluyen automáticamente ambas disciplinas (plan Libre).
+  * El plan mensual permite elegir entre Musculación, Crossfit o Libre.
 * **Operaciones de los Socios**:
   * Registrarse en el sistema con sus datos personales y de contacto (DNI, nombre, apellido, teléfono, email).
-  * Contratar planes de Musculación, Crossfit o Ambos, con duraciones de 1 mes, 6 meses o 1 año.
+  * Contratar planes de Musculación, Crossfit o Ambos, con duraciones de 1 mes, 6 meses o 1 año. Los planes de 6 meses y 12 meses corresponden al plan Libre.
   * Realizar pagos con distintos métodos (efectivo, débito, transferencia), con cálculo automático de la fecha de vencimiento.
   * Acceder al gimnasio mediante escaneo de DNI, validando la vigencia del plan y horario de apertura (6:00-23:00 hs).
   * Inscribirse a clases de Crossfit con horario fijo, profesor asignado y cupo limitado.
 * **Gestión y Control**:
-  * **Control de acceso**: Cada intento de ingreso queda registrado con fecha, hora y resultado (autorizado o denegado con su motivo).
+  * **Control de acceso**: Cada intento de ingreso queda registrado con fecha, hora y resultado (autorizado o denegado).
   * **Gestión de clases y profesores**: Asignación de instructores a días y horarios específicos para Crossfit, con límites de capacidad por clase.
   * **Inscripciones y control de cupo**: Validación de disponibilidad de lugares y prevención de inscripciones duplicadas.
-  * **Reportes**: Socios con plan vigente o vencido, recaudación mensual por plan y método de pago, historial de ingresos y disponibilidad de clases.
+  * **Reportes**: Socios con plan vigente o vencido, recaudación mensual, pérdida mensual, recaudación mensual por método de pago, socios con plan próximo a vencer en el lapso de 7 días, estado de plan de los socios (vigente/vencido) y disponibilidad de clases.
 
 ---
 
@@ -68,7 +68,8 @@ Para facilitar la administración del negocio, el script **[03_Vistas.sql](Creac
 2. **`perdida_mensual`**: Calcula la brecha entre el precio de lista (con IVA) y lo efectivamente pagado (debido a descuentos aplicados), agrupado por mes y año.
 3. **`recaudacion_metodo_pago`**: Sumariza los ingresos históricos según el medio de pago utilizado.
 4. **`socio_proximo_a_vencer`**: Lista de socios cuya membresía expira en los próximos 7 días (excluyendo los ya vencidos). Permite acciones proactivas de renovación.
-5. **`socio_plan_vencido`**: Lista de socios con planes cuya fecha de vencimiento es anterior al día de la fecha. Útil para control de acceso y telemarketing.
+5. **`socio_estado_plan`**: Lista de socios específicando si el plan esta vigente o vencido. Útil para control de acceso y telemarketing.
+6. **`disponibilidad_clases`**: Lista de clases específicando el día, horario, profesor y cupos disponibles.
 
 ---
 
