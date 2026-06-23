@@ -2,7 +2,7 @@
 
 Este repositorio contiene la especificación, diseño físico y población de la base de datos **GimnasioDB**, diseñada para la administración y control de un gimnasio (socios, profesores, sucursales, cobros, asistencia y reservas de clases).
 
-## 🚀 Inicio Rápido (Orden de Ejecución)
+## Inicio Rápido (Orden de Ejecución)
 
 Para desplegar la base de datos en tu servidor de SQL Server, ejecutá los scripts de la carpeta `CreacionDB/` en el siguiente orden estricto:
 
@@ -13,109 +13,7 @@ Para desplegar la base de datos en tu servidor de SQL Server, ejecutá los scrip
 
 ---
 
-## 📊 Modelo de Datos (Diagrama de Entidad-Relación)
-
-A continuación se detalla la estructura lógica y relacional de la base de datos:
-
-```mermaid
-erDiagram
-    SUCURSAL ||--o{ PERSONA : "alberga"
-    PERSONA ||--o| SOCIO : "es"
-    PERSONA ||--o| PROFESOR : "es"
-    SOCIO ||--o{ INGRESO : "registra"
-    SOCIO ||--o{ PAGO : "realiza"
-    SOCIO ||--o{ INSCRIPTOACLASE : "se inscribe"
-    PLAN ||--o{ PAGO : "se asocia a"
-    METODO_PAGO ||--o{ PAGO : "se usa en"
-    PROFESOR ||--o{ CLASE : "dicta"
-    PROFESOR ||--o{ TURNOS_PROFESOR : "cumple"
-    CLASE ||--o{ PLANES_CLASES : "requiere"
-    PLAN ||--o{ PLANES_CLASES : "habilita"
-    CLASE ||--o{ INSCRIPTOACLASE : "recibe"
-
-    SUCURSAL {
-        int id_sucursal PK
-        varchar nombre
-        varchar direccion
-        time hora_inicio
-        time hora_fin
-    }
-
-    PERSONA {
-        int id_persona PK
-        int id_sucursal FK
-        varchar nombre
-        varchar apellido
-        date fecha_nacimiento
-        varchar telefono
-        varchar email
-    }
-
-    SOCIO {
-        int id_socio PK
-        int id_persona FK
-    }
-
-    PROFESOR {
-        int id_profesor PK
-        int id_persona FK
-    }
-
-    INGRESO {
-        int id_asistencia PK
-        int id_socio FK
-        datetime fecha_hora
-        varchar estado
-    }
-
-    METODO_PAGO {
-        int id_metodo PK
-        varchar tipo_metodo
-        varchar nombre_metodo
-    }
-
-    PLAN {
-        int id_plan PK
-        varchar nombre
-        int duracion_meses
-        decimal precio_plan
-    }
-
-    PAGO {
-        int id_pago PK
-        int id_plan FK
-        int id_metodo FK
-        int id_socio FK
-        date fecha_pago
-        date fecha_vencimiento
-        decimal precio_con_IVA
-        decimal precio_sin_IVA
-        decimal pago_final
-        int descuento
-        varchar motivo_descuento
-    }
-
-    CLASE {
-        int id_clase PK
-        int id_profesor FK
-        varchar diasemana
-        time hora_inicio
-        time hora_fin
-        int cupomax
-    }
-
-    TURNOS_PROFESOR {
-        int id_turno PK
-        int id_profesor FK
-        varchar dia_semana
-        time hora_inicio
-        time hora_fin
-    }
-```
-
----
-
-## 🛠️ Detalles de la Estructura de Tablas
+## Detalles de la Estructura de Tablas
 
 | Tabla | Propósito / Descripción | Clave Primaria (PK) | Relaciones Clave (FK) |
 |---|---|---|---|
@@ -134,7 +32,7 @@ erDiagram
 
 ---
 
-## 📈 Vistas de Reporte Implementadas
+## Vistas de Reporte Implementadas
 
 Para facilitar la administración del negocio, el script **[03_Vistas.sql](CreacionDB/03_Vistas.sql)** define las siguientes vistas listas para consultar:
 
@@ -146,7 +44,7 @@ Para facilitar la administración del negocio, el script **[03_Vistas.sql](Creac
 
 ---
 
-## ⚙️ Lógica Programable Implementada (Procedimiento Almacenado y Triggers)
+## Lógica Programable Implementada (Procedimiento Almacenado y Triggers)
 
 Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el script **[04_Procedimientos_Y_Triggers.sql](CreacionDB/04_Procedimientos_Y_Triggers.sql)** agrega los siguientes componentes:
 
@@ -158,23 +56,54 @@ Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el scr
   - Proyecta la fecha de expiración (`fecha_vencimiento`) sumando la duración en meses del plan a la fecha de hoy.
   - Inserta el registro completo de forma transaccional protegiendo la consistencia de datos.
 
-### 2. Trigger `trg_ControlCupoClase` (en `INSCRIPTOACLASE`)
+### 2. Procedimiento Almacenado `sp_InscribirSocioClase`
+* **Propósito**: Gestionar la inscripción de un socio a una clase de forma segura.
+* **Operación**:
+  - Recibe el identificador del socio y de la clase.
+  - Valida la existencia de ambos registros en sus respectivas tablas (`SOCIO` y `CLASE`).
+  - Valida que el socio no esté inscripto previamente en la misma clase.
+  - Realiza la inserción en `INSCRIPTOACLASE` dentro de una transacción. En caso de que falle por superar el cupo máximo (lógica controlada por el trigger `trg_ControlCupoClase`), captura el error y realiza el rollback.
+
+### 3. Procedimiento Almacenado `sp_CancelarInscripcion`
+* **Propósito**: Cancelar la inscripción de un socio a una clase de forma segura, validando reglas temporales.
+* **Operación**:
+  - Recibe el identificador del socio y de la clase.
+  - Valida la existencia de ambos en sus respectivas tablas.
+  - Valida que el socio posea una inscripción activa para esa clase.
+  - De forma independiente a la configuración regional de SQL Server, determina el día de hoy y si coincide con el día de la clase, valida que la cancelación se efectúe al menos con 2 horas de anticipación.
+  - Realiza el borrado físico del registro en `INSCRIPTOACLASE` dentro de una transacción.
+
+### 4. Trigger `trg_ValidarPlanActivo` (en `PAGO`)
+* **Propósito**: Evitar la compra o superposición accidental de membresías activas para un mismo socio.
+* **Operación**:
+  - Se ejecuta `AFTER INSERT` en la tabla `PAGO`.
+  - Verifica si existe algún otro pago del mismo socio cuya `fecha_vencimiento >= fecha_pago` del nuevo registro.
+  - En caso positivo, cancela la transacción (`ROLLBACK`) y lanza un error informando que el socio ya posee un plan vigente.
+
+### 5. Trigger `trg_ControlCupoClase` (en `INSCRIPTOACLASE`)
 * **Propósito**: Impedir la sobre-inscripción a clases del gimnasio.
 * **Operación**:
   - Se ejecuta `AFTER INSERT, UPDATE` en la tabla `INSCRIPTOACLASE`.
   - Evalúa si el número total de inscriptos para las clases afectadas supera el cupo máximo (`cupomax`) configurado en `CLASE`.
   - En caso de excederse, ejecuta un `ROLLBACK` y cancela la transacción lanzando un error con `RAISERROR`.
 
-### 3. Trigger `trg_ValidarIngreso` (en `INGRESO`)
+### 6. Trigger `trg_ValidarIngreso` (en `INGRESO`)
 * **Propósito**: Controlar de forma autónoma el ingreso físico de los socios.
 * **Operación**:
   - Se ejecuta `AFTER INSERT` en la tabla `INGRESO`.
   - Compara si el socio posee un pago activo cuya `fecha_vencimiento >= GETDATE()`.
   - Modifica de forma automática la columna `estado` a `'Autorizado'` si tiene un plan vigente, o a `'Denegado'` si se encuentra vencido o sin registrar pagos.
 
+### 7. Trigger `trg_ValidarTurnoProfesor` (en `CLASE`)
+* **Propósito**: Impedir que se programen clases en horarios en los que el profesor asignado no trabaja.
+* **Operación**:
+  - Se ejecuta `AFTER INSERT, UPDATE` en la tabla `CLASE`.
+  - Para cada clase nueva o modificada, busca en `TURNOS_PROFESOR` si el profesor tiene registrado un turno el mismo día de la semana que cubra completamente el rango horario de la clase (`hora_inicio` y `hora_fin`).
+  - Si el horario de la clase no queda totalmente cubierto por el turno del profesor, cancela la transacción (`ROLLBACK`) y lanza un error con `RAISERROR`.
+
 ---
 
-## 👥 Autores
+## Autores
 
 * **Delfina Sarkis**
 * **Tomás Juárez**

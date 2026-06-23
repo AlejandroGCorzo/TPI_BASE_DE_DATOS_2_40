@@ -88,9 +88,194 @@ BEGIN
 END;
 GO
 
+-- ==========================================================================================
+-- 1.2. PROCEDIMIENTO ALMACENADO: sp_InscribirSocioClase
+-- ==========================================================================================
+IF OBJECT_ID('sp_InscribirSocioClase', 'P') IS NOT NULL
+BEGIN
+    DROP PROCEDURE sp_InscribirSocioClase;
+END
+GO
+
+CREATE PROCEDURE sp_InscribirSocioClase
+    @id_socio INT,
+    @id_clase INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Validar que el socio exista
+    IF NOT EXISTS (SELECT 1 FROM SOCIO WHERE id_socio = @id_socio)
+    BEGIN
+        RAISERROR('Error: El socio especificado no existe.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar que la clase exista
+    IF NOT EXISTS (SELECT 1 FROM CLASE WHERE id_clase = @id_clase)
+    BEGIN
+        RAISERROR('Error: La clase especificada no existe.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar que el socio no esté inscripto previamente en la misma clase
+    IF EXISTS (SELECT 1 FROM INSCRIPTOACLASE WHERE id_socio = @id_socio AND id_clase = @id_clase)
+    BEGIN
+        RAISERROR('Error: El socio ya se encuentra inscripto en esta clase.', 16, 1);
+        RETURN;
+    END
+
+    -- Inserción dentro de bloque transaccional
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO INSCRIPTOACLASE (id_socio, id_clase, fecha_inscripcion)
+        VALUES (@id_socio, @id_clase, GETDATE());
+
+        COMMIT TRANSACTION;
+        PRINT 'Inscripción realizada con éxito.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO
 
 -- ==========================================================================================
--- 2. TRIGGER: trg_ControlCupoClase (en INSCRIPTOACLASE)
+-- 1.3. PROCEDIMIENTO ALMACENADO: sp_CancelarInscripcion
+-- ==========================================================================================
+IF OBJECT_ID('sp_CancelarInscripcion', 'P') IS NOT NULL
+BEGIN
+    DROP PROCEDURE sp_CancelarInscripcion;
+END
+GO
+
+CREATE PROCEDURE sp_CancelarInscripcion
+    @id_socio INT,
+    @id_clase INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Validar que el socio exista
+    IF NOT EXISTS (SELECT 1 FROM SOCIO WHERE id_socio = @id_socio)
+    BEGIN
+        RAISERROR('Error: El socio especificado no existe.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar que la clase exista
+    IF NOT EXISTS (SELECT 1 FROM CLASE WHERE id_clase = @id_clase)
+    BEGIN
+        RAISERROR('Error: La clase especificada no existe.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar que el socio realmente esté inscripto
+    IF NOT EXISTS (SELECT 1 FROM INSCRIPTOACLASE WHERE id_socio = @id_socio AND id_clase = @id_clase)
+    BEGIN
+        RAISERROR('Error: El socio no se encuentra inscripto en esta clase.', 16, 1);
+        RETURN;
+    END
+
+    -- Regla de negocio: Validar anticipación de cancelación (mínimo 2 horas antes de la clase si es hoy)
+    DECLARE @diasemana VARCHAR(15);
+    DECLARE @hora_inicio TIME;
+    
+    SELECT @diasemana = diasemana, @hora_inicio = hora_inicio
+    FROM CLASE
+    WHERE id_clase = @id_clase;
+
+    -- Obtener día de hoy en español de forma independiente a la configuración regional
+    DECLARE @dia_hoy VARCHAR(15);
+    DECLARE @dw INT = (DATEPART(dw, GETDATE()) + @@DATEFIRST - 1) % 7;
+    SET @dia_hoy = CASE @dw
+        WHEN 0 THEN 'Domingo'
+        WHEN 1 THEN 'Lunes'
+        WHEN 2 THEN 'Martes'
+        WHEN 3 THEN 'Miercoles'
+        WHEN 4 THEN 'Jueves'
+        WHEN 5 THEN 'Viernes'
+        WHEN 6 THEN 'Sabado'
+    END;
+
+    IF @diasemana = @dia_hoy
+    BEGIN
+        -- Si la clase es hoy y falta menos de 2 horas (120 minutos) o ya comenzó/pasó
+        IF DATEDIFF(minute, CAST(GETDATE() AS TIME), @hora_inicio) < 120
+        BEGIN
+            RAISERROR('Error: No se puede cancelar la inscripción con menos de 2 horas de anticipación.', 16, 1);
+            RETURN;
+        END
+    END
+
+    -- Proceso de eliminación transaccional
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DELETE FROM INSCRIPTOACLASE
+        WHERE id_socio = @id_socio AND id_clase = @id_clase;
+
+        COMMIT TRANSACTION;
+        PRINT 'Inscripción cancelada con éxito.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO
+
+-- ==========================================================================================
+-- 2. TRIGGER: trg_ValidarPlanActivo (en PAGO)
+-- ==========================================================================================
+IF OBJECT_ID('trg_ValidarPlanActivo', 'TR') IS NOT NULL
+BEGIN
+    DROP TRIGGER trg_ValidarPlanActivo;
+END
+GO
+
+CREATE TRIGGER trg_ValidarPlanActivo
+ON PAGO
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+
+    -- Validar si el socio ya tiene un plan vigente al momento de registrar el nuevo pago
+    IF EXISTS (
+        SELECT 1
+        FROM inserted ins
+        JOIN PAGO p ON ins.id_socio = p.id_socio
+        WHERE p.id_pago <> ins.id_pago
+          AND p.fecha_vencimiento >= ins.fecha_pago
+    )
+    BEGIN
+        ROLLBACK TRANSACTION;
+        RAISERROR('Error: El socio ya posee un plan activo y vigente.', 16, 1);
+        RETURN;
+    END
+END;
+GO
+
+
+-- ==========================================================================================
+-- 3. TRIGGER: trg_ControlCupoClase (en INSCRIPTOACLASE)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ControlCupoClase', 'TR') IS NOT NULL
 BEGIN
@@ -131,7 +316,7 @@ GO
 
 
 -- ==========================================================================================
--- 3. TRIGGER: trg_ValidarIngreso (en INGRESO)
+-- 4. TRIGGER: trg_ValidarIngreso (en INGRESO)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ValidarIngreso', 'TR') IS NOT NULL
 BEGIN
@@ -167,7 +352,47 @@ GO
 
 
 -- ==========================================================================================
--- 4. SCRIPTS DE PRUEBA (Para verificación manual en SQL Server)
+-- 5. TRIGGER: trg_ValidarTurnoProfesor (en CLASE)
+-- ==========================================================================================
+IF OBJECT_ID('trg_ValidarTurnoProfesor', 'TR') IS NOT NULL
+BEGIN
+    DROP TRIGGER trg_ValidarTurnoProfesor;
+END
+GO
+
+CREATE TRIGGER trg_ValidarTurnoProfesor
+ON CLASE
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+
+    -- Verifica si alguna clase no tiene un turno del profesor asignado que la cubra por completo
+    IF EXISTS (
+        SELECT 1
+        FROM inserted ins
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM TURNOS_PROFESOR t
+            WHERE t.id_profesor = ins.id_profesor
+              AND t.dia_semana = ins.diasemana
+              AND t.hora_inicio <= ins.hora_inicio
+              AND t.hora_fin >= ins.hora_fin
+        )
+    )
+    BEGIN
+        ROLLBACK TRANSACTION;
+        RAISERROR('Error: El profesor no tiene un turno de trabajo registrado que cubra el día y horario de esta clase.', 16, 1);
+        RETURN;
+    END
+END;
+GO
+
+
+-- ==========================================================================================
+-- 5. SCRIPTS DE PRUEBA (Para verificación manual en SQL Server)
 -- ==========================================================================================
 /*
 -- NOTA: Asegurate de haber ejecutado previamente 01_DDL_Estructura.sql y 02_DML_Datos.sql.
@@ -183,6 +408,36 @@ EXEC sp_RegistrarPago @id_socio = 1, @id_plan = 1, @id_metodo = 1, @descuento = 
 
 -- Verificamos que se haya calculado bien el precio final e IVA:
 SELECT * FROM PAGO WHERE id_socio = 1;
+
+
+---------------------------------------------------------------------------------------------
+-- PRUEBA 1.1: Trigger trg_ValidarPlanActivo
+---------------------------------------------------------------------------------------------
+-- Intentamos registrar otro pago para el mismo socio 1 (debería fallar porque su plan sigue activo):
+EXEC sp_RegistrarPago @id_socio = 1, @id_plan = 1, @id_metodo = 1, @descuento = 0;
+
+
+---------------------------------------------------------------------------------------------
+-- PRUEBA 1.2: Procedimiento sp_InscribirSocioClase
+---------------------------------------------------------------------------------------------
+-- Intentamos inscribir al socio 1 a la clase 1:
+EXEC sp_InscribirSocioClase @id_socio = 1, @id_clase = 1;
+
+-- Intentamos inscribir de nuevo al socio 1 a la clase 1 (debería fallar por duplicado):
+EXEC sp_InscribirSocioClase @id_socio = 1, @id_clase = 1;
+
+-- Verificamos la inscripción en la tabla:
+SELECT * FROM INSCRIPTOACLASE WHERE id_socio = 1 AND id_clase = 1;
+
+
+---------------------------------------------------------------------------------------------
+-- PRUEBA 1.3: Procedimiento sp_CancelarInscripcion
+---------------------------------------------------------------------------------------------
+-- Intentamos cancelar la inscripción del socio 1 a la clase 1 (que creamos en la prueba anterior):
+EXEC sp_CancelarInscripcion @id_socio = 1, @id_clase = 1;
+
+-- Intentamos cancelar una inscripción que no existe (debería fallar):
+EXEC sp_CancelarInscripcion @id_socio = 1, @id_clase = 999;
 
 
 ---------------------------------------------------------------------------------------------
@@ -211,4 +466,22 @@ INSERT INTO INGRESO (id_socio, estado) VALUES (2, 'Pendiente');
 -- Chequeamos los estados asignados por el trigger trg_ValidarIngreso:
 SELECT * FROM INGRESO;
 -- Deberías ver que el socio 1 quedó 'Autorizado' y el socio 2 quedó 'Denegado'.
+
+
+---------------------------------------------------------------------------------------------
+-- PRUEBA 4: Trigger trg_ValidarTurnoProfesor
+---------------------------------------------------------------------------------------------
+-- Profesor 1 trabaja Lunes y Miercoles de 06:00:00 a 12:00:00 en las semillas.
+
+-- 1. Intentamos crear una clase para Profesor 1 en su horario laboral (debería funcionar):
+INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+VALUES (1, 'Lunes', '09:00:00', '10:00:00', 10);
+
+-- 2. Intentamos crear una clase para Profesor 1 fuera de su horario laboral (debería fallar por el trigger):
+INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+VALUES (1, 'Lunes', '13:00:00', '14:00:00', 10);
+
+-- 3. Intentamos crear una clase para Profesor 1 en un día que no trabaja (debería fallar por el trigger):
+INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+VALUES (1, 'Martes', '09:00:00', '10:00:00', 10);
 */
