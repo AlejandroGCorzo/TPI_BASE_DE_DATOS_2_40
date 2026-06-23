@@ -43,10 +43,10 @@ INSERT INTO [PLAN] (nombre, duracion_meses, precio_plan) VALUES
 
 -- CLASE
 INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax) VALUES
-(1, 'Lunes', '08:00:00', '09:00:00', 10),
-(1, 'Miercoles', '08:00:00', '09:00:00', 10),
-(2, 'Martes', '18:00:00', '19:00:00', 15),
-(2, 'Jueves', '18:00:00', '19:00:00', 15);
+(1, 'Lunes', '08:00:00', '09:00:00', 20),
+(1, 'Miercoles', '08:00:00', '09:00:00', 20),
+(2, 'Martes', '18:00:00', '19:00:00', 20),
+(2, 'Jueves', '18:00:00', '19:00:00', 20);
 
 -- TURNOS_PROFESOR
 INSERT INTO TURNOS_PROFESOR (id_profesor, dia_semana, hora_inicio, hora_fin) VALUES
@@ -64,7 +64,7 @@ INSERT INTO PLANES_CLASES (id_clase, id_plan) VALUES
 
 -- PAGO 
 INSERT INTO PAGO (id_plan, id_metodo, id_socio, fecha_pago, fecha_vencimiento, precio_con_IVA, precio_sin_IVA, pago_final, descuento, motivo_descuento) VALUES
-(1, 1, 1, '2026-06-01', '2026-07-01', 15000.00, 12396.69, 15000.00, 0, NULL),
+(1, 1, 1, '2026-05-01', '2026-06-01', 15000.00, 12396.69, 15000.00, 0, NULL),
 (3, 2, 2, '2026-06-10', '2026-07-10', 25000.00, 20661.16, 25000.00, 0, NULL),
 (4, 3, 3, '2026-05-15', '2026-11-15', 130000.00, 107438.02, 125000.00, 5000, 'Promo débito'),
 (2, 1, 4, '2026-06-05', '2026-07-05', 18000.00, 14876.03, 18000.00, 0, NULL);
