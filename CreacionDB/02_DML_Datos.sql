@@ -7,13 +7,13 @@ INSERT INTO SUCURSAL (nombre, direccion, hora_inicio, hora_fin) VALUES
 ('Gimnasio Los Fierros', 'Av. Siempreviva 742', '07:00:00', '22:00:00');
 
 -- PERSONA 
-INSERT INTO PERSONA (id_sucursal, nombre, apellido, fecha_nacimiento, telefono, email) VALUES
-(1, 'Arnold', 'Schwarzenegger', '1947-07-30', '1155550001', 'arnold@gym.com'),
-(1, 'Ronnie', 'Coleman', '1964-05-13', '1155550002', 'ronnie@gym.com'),
-(1, 'Pepe', 'Honguito', '1995-10-10', '1155550003', 'pepe@hotmail.com'),
-(1, 'Cacho', 'Castaña', '1980-06-11', '1155550004', 'cacho@gmail.com'),
-(1, 'Mariela', 'Funes', '1990-03-22', '1155550005', 'mariela@gmail.com'),
-(1, 'Diego', 'Roldan', '1988-12-01', '1155550006', 'diego@gmail.com');
+INSERT INTO PERSONA (id_sucursal, nombre, apellido, fecha_nacimiento, dni, telefono, email) VALUES
+(1, 'Arnold', 'Schwarzenegger', '1947-07-30', 12345678, '1155550001', 'arnold@gym.com'),
+(1, 'Ronnie', 'Coleman', '1964-05-13', 23456789, '1155550002', 'ronnie@gym.com'),
+(1, 'Pepe', 'Honguito', '1995-10-10', 34567890, '1155550003', 'pepe@hotmail.com'),
+(1, 'Cacho', 'Castaña', '1980-06-11', 45678901, '1155550004', 'cacho@gmail.com'),
+(1, 'Mariela', 'Funes', '1990-03-22', 56789012, '1155550005', 'mariela@gmail.com'),
+(1, 'Diego', 'Roldan', '1988-12-01', 67890123, '1155550006', 'diego@gmail.com');
 
 -- PROFESOR 
 INSERT INTO PROFESOR (id_persona) VALUES

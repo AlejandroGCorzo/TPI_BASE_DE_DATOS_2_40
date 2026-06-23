@@ -38,7 +38,7 @@ GO
 
 --SOCIOS CON PLAN PRÓXIMO A VENCER (EN LOS PRÓXIMOS 7 DÍAS)
 CREATE VIEW socio_proximo_a_vencer AS
-SELECT p.fecha_vencimiento, CONCAT(pe.nombre, ' ', pe.apellido) AS nombre_apellido, pe.telefono, pe.email
+SELECT p.fecha_vencimiento, CONCAT(pe.nombre, ' ', pe.apellido) AS nombre_apellido, pe.dni, pe.telefono, pe.email
 FROM PAGO p
 INNER JOIN SOCIO s ON s.id_socio = p.id_socio
 INNER JOIN PERSONA pe ON pe.id_persona = s.id_persona
@@ -52,7 +52,7 @@ GO
 
 --SOCIOS CON PLAN VENCIDO
 CREATE VIEW socio_plan_vencido AS
-SELECT p.fecha_vencimiento, CONCAT(pe.nombre, ' ', pe.apellido) AS nombre_apellido, pe.telefono, pe.email
+SELECT p.fecha_vencimiento, CONCAT(pe.nombre, ' ', pe.apellido) AS nombre_apellido, pe.dni, pe.telefono, pe.email
 FROM PAGO p
 INNER JOIN SOCIO s ON s.id_socio = p.id_socio
 INNER JOIN PERSONA pe ON pe.id_persona = s.id_persona
