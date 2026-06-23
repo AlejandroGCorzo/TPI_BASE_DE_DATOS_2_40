@@ -2,6 +2,34 @@
 
 Este repositorio contiene la especificación, diseño físico y población de la base de datos **GimnasioDB**, diseñada para la administración y control de un gimnasio (socios, profesores, sucursales, cobros, asistencia y reservas de clases).
 
+---
+
+## Enunciado y Reglas de Negocio del Proyecto
+
+El sistema automatiza y centraliza la información necesaria para administrar los socios, la oferta de planes (Musculación y Crossfit), el registro de pagos y el control de acceso físico a las instalaciones, resolviendo dos problemáticas principales:
+1. **Logística comercial**: El registro de pagos calcula automáticamente la fecha de vencimiento de los planes, permitiendo determinar si un socio tiene el acceso habilitado.
+2. **Logística operativa**: El sistema gestiona la disponibilidad de las clases de Crossfit, asignando profesores a horarios fijos y controlando de manera estricta el cupo máximo por clase para evitar la sobreventa de lugares mediante la gestión eficiente de inscripciones.
+
+### Reglas Clave:
+* **Horario de operación**: El gimnasio opera en el horario de 6:00 a 23:00 horas.
+* **Simultaneidad de planes**: Un socio puede contratar ambos planes (Musculación y Crossfit) de forma simultánea, y el sistema gestiona de forma independiente la vigencia de cada uno.
+* **Disciplinas por plan**:
+  * Los planes de 6 y 12 meses incluyen automáticamente ambas disciplinas (Musculación y Crossfit).
+  * El plan mensual permite elegir entre Musculación, Crossfit o Ambos.
+* **Operaciones de los Socios**:
+  * Registrarse en el sistema con sus datos personales y de contacto (DNI, nombre, apellido, teléfono, email).
+  * Contratar planes de Musculación, Crossfit o Ambos, con duraciones de 1 mes, 6 meses o 1 año.
+  * Realizar pagos con distintos métodos (efectivo, débito, transferencia), con cálculo automático de la fecha de vencimiento.
+  * Acceder al gimnasio mediante escaneo de DNI, validando la vigencia del plan y horario de apertura (6:00-23:00 hs).
+  * Inscribirse a clases de Crossfit con horario fijo, profesor asignado y cupo limitado.
+* **Gestión y Control**:
+  * **Control de acceso**: Cada intento de ingreso queda registrado con fecha, hora y resultado (autorizado o denegado con su motivo).
+  * **Gestión de clases y profesores**: Asignación de instructores a días y horarios específicos para Crossfit, con límites de capacidad por clase.
+  * **Inscripciones y control de cupo**: Validación de disponibilidad de lugares y prevención de inscripciones duplicadas.
+  * **Reportes**: Socios con plan vigente o vencido, recaudación mensual por plan y método de pago, historial de ingresos y disponibilidad de clases.
+
+---
+
 ## Inicio Rápido (Orden de Ejecución)
 
 Para desplegar la base de datos en tu servidor de SQL Server, ejecutá los scripts de la carpeta `CreacionDB/` en el siguiente orden estricto:
@@ -44,25 +72,27 @@ Para facilitar la administración del negocio, el script **[03_Vistas.sql](Creac
 
 ---
 
-## Lógica Programable Implementada (Procedimiento Almacenado y Triggers)
+## Lógica Programable Implementada (Procedimientos Almacenados y Triggers)
 
 Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el script **[04_Procedimientos_Y_Triggers.sql](CreacionDB/04_Procedimientos_Y_Triggers.sql)** agrega los siguientes componentes:
 
 ### 1. Procedimiento Almacenado `sp_RegistrarPago`
-* **Propósito**: Automatizar la compra y facturación de membresías.
+* **Propósito**: Automatizar la compra y facturación de membresías, controlando la simultaneidad de planes.
 * **Operación**:
   - Recibe el socio, plan, medio de pago y el descuento opcional (de 0 a 100%).
+  - **Conversión Automática a Plan Libre**: Si un socio posee un plan individual activo (ej. *Crossfit*) y contrata el complementario (ej. *Musculación*), el sistema lo actualiza automáticamente a **Plan Libre (id_plan = 3)**. Dentro de la misma transacción, desactiva el plan anterior reduciendo su fecha de vencimiento al día de ayer para evitar colisiones.
   - Busca el precio del plan y calcula dinámicamente el IVA (`precio_sin_IVA = precio_con_IVA / 1.21`).
   - Proyecta la fecha de expiración (`fecha_vencimiento`) sumando la duración en meses del plan a la fecha de hoy.
-  - Inserta el registro completo de forma transaccional protegiendo la consistencia de datos.
+  - Inserta el registro completo de forma transaccional protegiendo la consistencia y atomicidad de los datos.
 
 ### 2. Procedimiento Almacenado `sp_InscribirSocioClase`
-* **Propósito**: Gestionar la inscripción de un socio a una clase de forma segura.
+* **Propósito**: Gestionar la inscripción de un socio a una clase de forma segura, validando los permisos de su membresía.
 * **Operación**:
   - Recibe el identificador del socio y de la clase.
   - Valida la existencia de ambos registros en sus respectivas tablas (`SOCIO` y `CLASE`).
   - Valida que el socio no esté inscripto previamente en la misma clase.
-  - Realiza la inserción en `INSCRIPTOACLASE` dentro de una transacción. En caso de que falle por superar el cupo máximo (lógica controlada por el trigger `trg_ControlCupoClase`), captura el error y realiza el rollback.
+  - **Control de Membresía**: Verifica a través de la tabla `PLANES_CLASES` y los pagos vigentes que el socio tenga contratada una membresía activa que le otorgue derecho a tomar esa clase.
+  - Realiza la inserción en `INSCRIPTOACLASE` dentro de una transacción. En caso de superar el cupo máximo (lógica controlada por el trigger `trg_ControlCupoClase`), captura el error y realiza el rollback.
 
 ### 3. Procedimiento Almacenado `sp_CancelarInscripcion`
 * **Propósito**: Cancelar la inscripción de un socio a una clase de forma segura, validando reglas temporales.
@@ -73,33 +103,46 @@ Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el scr
   - De forma independiente a la configuración regional de SQL Server, determina el día de hoy y si coincide con el día de la clase, valida que la cancelación se efectúe al menos con 2 horas de anticipación.
   - Realiza el borrado físico del registro en `INSCRIPTOACLASE` dentro de una transacción.
 
-### 4. Trigger `trg_ValidarPlanActivo` (en `PAGO`)
-* **Propósito**: Evitar la compra o superposición accidental de membresías activas para un mismo socio.
+### 4. Procedimiento Almacenado `sp_RegistrarIngreso`
+* **Propósito**: Gestionar el control de accesos físico de forma lógica mediante el escaneo del DNI del socio.
+* **Operación**:
+  - Recibe el DNI del socio (`@dni`).
+  - Valida cruzando con `SOCIO` y `PERSONA` que el DNI corresponda a un socio registrado. Si no existe, genera un error con `RAISERROR`.
+  - Inserta un nuevo registro en `INGRESO` con estado `'Pendiente'`.
+  - Deja que el trigger `trg_ValidarIngreso` evalúe de forma automática y autónoma el horario del gimnasio y la vigencia de la membresía del socio, actualizando el estado de forma inmediata.
+  - Retorna y muestra el estado final del ingreso obtenido tras la evaluación.
+
+### 5. Trigger `trg_ValidarPlanActivo` (en `PAGO`)
+* **Propósito**: Evitar la compra o superposición accidental de membresías de la misma disciplina para un mismo socio.
 * **Operación**:
   - Se ejecuta `AFTER INSERT` en la tabla `PAGO`.
-  - Verifica si existe algún otro pago del mismo socio cuya `fecha_vencimiento >= fecha_pago` del nuevo registro.
-  - En caso positivo, cancela la transacción (`ROLLBACK`) y lanza un error informando que el socio ya posee un plan vigente.
+  - Permite la contratación simultánea de planes de **diferentes disciplinas** (Musculación y Crossfit).
+  - Lanza un `ROLLBACK` y un error descriptivo si el socio intenta registrar un nuevo pago para un plan cuyas disciplinas ya están cubiertas por su plan activo vigente (ej. contratar dos planes de Musculación simultáneos o contratar cualquier plan individual teniendo ya un Plan Libre activo).
 
-### 5. Trigger `trg_ControlCupoClase` (en `INSCRIPTOACLASE`)
+### 6. Trigger `trg_ControlCupoClase` (en `INSCRIPTOACLASE`)
 * **Propósito**: Impedir la sobre-inscripción a clases del gimnasio.
 * **Operación**:
   - Se ejecuta `AFTER INSERT, UPDATE` en la tabla `INSCRIPTOACLASE`.
   - Evalúa si el número total de inscriptos para las clases afectadas supera el cupo máximo (`cupomax`) configurado en `CLASE`.
   - En caso de excederse, ejecuta un `ROLLBACK` y cancela la transacción lanzando un error con `RAISERROR`.
 
-### 6. Trigger `trg_ValidarIngreso` (en `INGRESO`)
-* **Propósito**: Controlar de forma autónoma el ingreso físico de los socios.
+### 7. Trigger `trg_ValidarIngreso` (en `INGRESO`)
+* **Propósito**: Controlar de forma autónoma el ingreso físico de los socios, validando plan y horario.
 * **Operación**:
   - Se ejecuta `AFTER INSERT` en la tabla `INGRESO`.
-  - Compara si el socio posee un pago activo cuya `fecha_vencimiento >= GETDATE()`.
-  - Modifica de forma automática la columna `estado` a `'Autorizado'` si tiene un plan vigente, o a `'Denegado'` si se encuentra vencido o sin registrar pagos.
+  - **Validación Horaria**: Valida que la hora del ingreso (`CAST(fecha_hora AS TIME)`) esté dentro del horario de funcionamiento comercial del gimnasio (**06:00 a 23:00 hs**).
+  - **Validación Financiera**: Compara si el socio posee un pago activo vigente a la fecha del ingreso.
+  - Registra el resultado en la columna `estado` escribiendo `'Autorizado'` si cumple ambas condiciones, o el motivo detallado si es denegado:
+    - `'Denegado: Fuera de horario de apertura (06:00 - 23:00)'`
+    - `'Denegado: Socio sin plan activo o vigente'`
 
-### 7. Trigger `trg_ValidarTurnoProfesor` (en `CLASE`)
-* **Propósito**: Impedir que se programen clases en horarios en los que el profesor asignado no trabaja.
+### 8. Trigger `trg_ValidarTurnoProfesor` (en `CLASE`)
+* **Propósito**: Impedir la programación de clases en horarios de inactividad del gimnasio o fuera de la jornada laboral del profesor.
 * **Operación**:
   - Se ejecuta `AFTER INSERT, UPDATE` en la tabla `CLASE`.
-  - Para cada clase nueva o modificada, busca en `TURNOS_PROFESOR` si el profesor tiene registrado un turno el mismo día de la semana que cubra completamente el rango horario de la clase (`hora_inicio` y `hora_fin`).
-  - Si el horario de la clase no queda totalmente cubierto por el turno del profesor, cancela la transacción (`ROLLBACK`) y lanza un error con `RAISERROR`.
+  - **Control de Apertura**: Asegura que las clases se programen dentro del horario de apertura del gimnasio (**06:00 a 23:00 hs**).
+  - **Control de Profesor**: Para cada clase nueva o modificada, busca en `TURNOS_PROFESOR` si el profesor asignado tiene registrado un turno el mismo día de la semana que cubra completamente el rango horario de la clase (`hora_inicio` y `hora_fin`).
+  - Si alguna regla se infringe, cancela la transacción (`ROLLBACK`) y lanza un error descriptivo.
 
 ---
 

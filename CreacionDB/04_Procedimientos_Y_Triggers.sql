@@ -27,6 +27,8 @@ BEGIN
     DECLARE @precio_con_IVA DECIMAL(10, 2);
     DECLARE @precio_sin_IVA DECIMAL(10, 2);
     DECLARE @pago_final DECIMAL(10, 2);
+    
+    DECLARE @id_pago_a_desactivar INT = NULL;
 
     -- Validaciones de existencia de claves foráneas
     IF NOT EXISTS (SELECT 1 FROM SOCIO WHERE id_socio = @id_socio)
@@ -54,7 +56,37 @@ BEGIN
         RETURN;
     END
 
-    -- Obtener datos del plan
+    -- Si el socio tiene un plan complementario activo, pasa automáticamente a Plan Libre (id_plan = 3)
+    IF @id_plan = 1 -- Intenta comprar Plan Musculación
+    BEGIN
+        SELECT TOP 1 @id_pago_a_desactivar = id_pago
+        FROM PAGO
+        WHERE id_socio = @id_socio
+          AND id_plan = 2 -- Tiene Plan Crossfit activo
+          AND fecha_vencimiento >= @fecha_pago
+        ORDER BY fecha_vencimiento DESC;
+
+        IF @id_pago_a_desactivar IS NOT NULL
+        BEGIN
+            SET @id_plan = 3; -- Cambia automáticamente a Plan Libre
+        END
+    END
+    ELSE IF @id_plan = 2 -- Intenta comprar Plan Crossfit
+    BEGIN
+        SELECT TOP 1 @id_pago_a_desactivar = id_pago
+        FROM PAGO
+        WHERE id_socio = @id_socio
+          AND id_plan = 1 -- Tiene Plan Musculación activo
+          AND fecha_vencimiento >= @fecha_pago
+        ORDER BY fecha_vencimiento DESC;
+
+        IF @id_pago_a_desactivar IS NOT NULL
+        BEGIN
+            SET @id_plan = 3; -- Cambia automáticamente a Plan Libre
+        END
+    END
+
+    -- Obtener datos del plan (ya resuelto, sea el original o el Libre tras la conversión)
     SELECT @precio_plan = precio_plan, @duracion_meses = duracion_meses
     FROM [PLAN]
     WHERE id_plan = @id_plan;
@@ -68,6 +100,14 @@ BEGIN
     -- Inserción del pago dentro de bloque transaccional
     BEGIN TRY
         BEGIN TRANSACTION;
+        
+        -- Si hay un plan complementario anterior que desactivar, lo vencemos ayer para evitar solapamientos
+        IF @id_pago_a_desactivar IS NOT NULL
+        BEGIN
+            UPDATE PAGO 
+            SET fecha_vencimiento = DATEADD(day, -1, @fecha_pago) 
+            WHERE id_pago = @id_pago_a_desactivar;
+        END
         
         INSERT INTO PAGO (id_plan, id_metodo, id_socio, fecha_pago, fecha_vencimiento, precio_con_IVA, precio_sin_IVA, pago_final, descuento, motivo_descuento)
         VALUES (@id_plan, @id_metodo, @id_socio, @fecha_pago, @fecha_vencimiento, @precio_con_IVA, @precio_sin_IVA, @pago_final, @descuento, @motivo_descuento);
@@ -122,6 +162,20 @@ BEGIN
     IF EXISTS (SELECT 1 FROM INSCRIPTOACLASE WHERE id_socio = @id_socio AND id_clase = @id_clase)
     BEGIN
         RAISERROR('Error: El socio ya se encuentra inscripto en esta clase.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar que el socio tenga un plan activo vigente que cubra la clase (a través de la tabla PLANES_CLASES)
+    IF NOT EXISTS (
+        SELECT 1
+        FROM PAGO p
+        JOIN PLANES_CLASES pc ON p.id_plan = pc.id_plan
+        WHERE p.id_socio = @id_socio
+          AND pc.id_clase = @id_clase
+          AND p.fecha_vencimiento >= CAST(GETDATE() AS DATE)
+    )
+    BEGIN
+        RAISERROR('Error: El socio no posee un plan activo y vigente que incluya esta clase.', 16, 1);
         RETURN;
     END
 
@@ -240,6 +294,66 @@ END;
 GO
 
 -- ==========================================================================================
+-- 1.4. PROCEDIMIENTO ALMACENADO: sp_RegistrarIngreso
+-- ==========================================================================================
+IF OBJECT_ID('sp_RegistrarIngreso', 'P') IS NOT NULL
+BEGIN
+    DROP PROCEDURE sp_RegistrarIngreso;
+END
+GO
+
+CREATE PROCEDURE sp_RegistrarIngreso
+    @dni INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @id_socio INT;
+    
+    -- Validar que la persona con ese DNI exista y sea un Socio registrado
+    SELECT @id_socio = s.id_socio
+    FROM PERSONA p
+    JOIN SOCIO s ON p.id_persona = s.id_persona
+    WHERE p.dni = @dni;
+
+    IF @id_socio IS NULL
+    BEGIN
+        RAISERROR('Error: El DNI ingresado no corresponde a ningún socio registrado.', 16, 1);
+        RETURN;
+    END
+
+    -- Insertar el intento de ingreso
+    -- El trigger trg_ValidarIngreso evaluará el horario y la vigencia del plan de forma automática
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO INGRESO (id_socio, fecha_hora, estado)
+        VALUES (@id_socio, GETDATE(), 'Pendiente');
+
+        COMMIT TRANSACTION;
+        
+        -- Mostrar el resultado final del ingreso tras la evaluación del trigger
+        DECLARE @estado_resultado VARCHAR(100);
+        SELECT @estado_resultado = estado 
+        FROM INGRESO 
+        WHERE id_asistencia = SCOPE_IDENTITY();
+        
+        PRINT 'Ingreso registrado. Estado: ' + @estado_resultado;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO
+
+-- ==========================================================================================
 -- 2. TRIGGER: trg_ValidarPlanActivo (en PAGO)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ValidarPlanActivo', 'TR') IS NOT NULL
@@ -257,17 +371,28 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
 
-    -- Validar si el socio ya tiene un plan vigente al momento de registrar el nuevo pago
+    -- Validar si el socio ya tiene un plan vigente al momento de registrar el nuevo pago que cubra la misma disciplina
     IF EXISTS (
         SELECT 1
         FROM inserted ins
+        JOIN [PLAN] new_p ON ins.id_plan = new_p.id_plan
         JOIN PAGO p ON ins.id_socio = p.id_socio
+        JOIN [PLAN] old_p ON p.id_plan = old_p.id_plan
         WHERE p.id_pago <> ins.id_pago
           AND p.fecha_vencimiento >= ins.fecha_pago
+          AND (
+              -- Colisión de disciplina Musculación
+              ((new_p.nombre LIKE '%Musculación%' OR new_p.nombre LIKE '%Libre%') AND 
+               (old_p.nombre LIKE '%Musculación%' OR old_p.nombre LIKE '%Libre%'))
+              OR
+              -- Colisión de disciplina Crossfit
+              ((new_p.nombre LIKE '%Crossfit%' OR new_p.nombre LIKE '%Libre%') AND 
+               (old_p.nombre LIKE '%Crossfit%' OR old_p.nombre LIKE '%Libre%'))
+          )
     )
     BEGIN
         ROLLBACK TRANSACTION;
-        RAISERROR('Error: El socio ya posee un plan activo y vigente.', 16, 1);
+        RAISERROR('Error: El socio ya posee un plan activo y vigente que cubre una o más de las disciplinas seleccionadas.', 16, 1);
         RETURN;
     END
 END;
@@ -334,16 +459,22 @@ BEGIN
     -- Prevenir bucles infinitos en el trigger
     IF TRIGGER_NESTLEVEL() > 1 RETURN;
 
-    -- Actualiza el estado del ingreso según tenga o no un pago cuya fecha de vencimiento siga vigente
+    -- Actualiza el estado del ingreso según tenga o no un pago vigente y si está en el horario permitido (6:00 a 23:00)
     UPDATE i
     SET estado = CASE 
-        WHEN EXISTS (
+        -- Validar horario de apertura del gimnasio
+        WHEN CAST(ins.fecha_hora AS TIME) < '06:00:00' OR CAST(ins.fecha_hora AS TIME) > '23:00:00' 
+            THEN 'Denegado: Fuera de horario de apertura (06:00 - 23:00)'
+        
+        -- Validar plan vigente
+        WHEN NOT EXISTS (
             SELECT 1 
             FROM PAGO p
             WHERE p.id_socio = ins.id_socio
               AND p.fecha_vencimiento >= CAST(ins.fecha_hora AS DATE)
-        ) THEN 'Autorizado'
-        ELSE 'Denegado'
+        ) THEN 'Denegado: Socio sin plan activo o vigente'
+        
+        ELSE 'Autorizado'
     END
     FROM INGRESO i
     JOIN inserted ins ON i.id_asistencia = ins.id_asistencia;
@@ -368,6 +499,18 @@ BEGIN
     SET NOCOUNT ON;
 
     IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+
+    -- Validar que la clase esté programada dentro del horario de apertura del gimnasio (06:00 a 23:00)
+    IF EXISTS (
+        SELECT 1
+        FROM inserted ins
+        WHERE ins.hora_inicio < '06:00:00' OR ins.hora_fin > '23:00:00'
+    )
+    BEGIN
+        ROLLBACK TRANSACTION;
+        RAISERROR('Error: Las clases deben programarse dentro del horario de apertura del gimnasio (06:00 a 23:00).', 16, 1);
+        RETURN;
+    END
 
     -- Verifica si alguna clase no tiene un turno del profesor asignado que la cubra por completo
     IF EXISTS (
