@@ -27,6 +27,7 @@ CREATE TABLE PERSONA (
     nombre VARCHAR(50) NOT NULL,
     apellido VARCHAR(50) NOT NULL,
     fecha_nacimiento DATE NOT NULL,
+    dni INT UNIQUE NOT NULL,
     telefono VARCHAR(20),
     email VARCHAR(100),
     PRIMARY KEY (id_persona),
