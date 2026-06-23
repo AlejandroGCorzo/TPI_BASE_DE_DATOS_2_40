@@ -16,3 +16,12 @@
 ## OS Files
 .DS_Store
 Thumbs.db
+
+## Atl (Skill Registry)
+.atl/
+
+## OpenSpec SDD Artifacts
+openspec/
+
+## Guia de Presentacion (Estudio)
+Guia_Presentacion_GimnasioDB.md
