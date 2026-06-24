@@ -78,12 +78,12 @@ SELECT * FROM socio_estado_plan ORDER BY estado_plan DESC; --muestra primero los
 GO
 
 CREATE VIEW disponibilidad_clases AS
-SELECT c.diasemana, CONCAT(CONVERT(VARCHAR(5), c.hora_inicio, 108), ' - ', CONVERT(VARCHAR(5), c.hora_fin, 108)) AS horario, CONCAT(pe.nombre, ' ', pe.apellido) AS profesor, c.cupomax - COUNT(ic.id_inscripto) AS cupos_disponibles
+SELECT c.dia_semana, CONCAT(CONVERT(VARCHAR(5), c.hora_inicio, 108), ' - ', CONVERT(VARCHAR(5), c.hora_fin, 108)) AS horario, CONCAT(pe.nombre, ' ', pe.apellido) AS profesor, c.cupomax - COUNT(ic.id_inscripto) AS cupos_disponibles
 FROM CLASE c  
 INNER JOIN PROFESOR p ON p.id_profesor = c.id_profesor
 INNER JOIN PERSONA pe ON pe.id_persona = p.id_persona
 LEFT JOIN INSCRIPTOACLASE ic ON ic.id_clase = c.id_clase
-GROUP BY c.diasemana, c.hora_inicio, c.hora_fin, pe.nombre, pe.apellido, c.cupomax
+GROUP BY c.dia_semana, c.hora_inicio, c.hora_fin, pe.nombre, pe.apellido, c.cupomax
 
 GO
 

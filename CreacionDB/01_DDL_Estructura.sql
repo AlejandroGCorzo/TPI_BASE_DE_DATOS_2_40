@@ -36,13 +36,13 @@ CREATE TABLE PERSONA (
 
 CREATE TABLE SOCIO (
     id_socio INT IDENTITY(1,1) PRIMARY KEY,
-    id_persona INT NOT NULL,
+    id_persona INT UNIQUE NOT NULL,
     FOREIGN KEY (id_persona) REFERENCES PERSONA(id_persona)
 );
 
 CREATE TABLE PROFESOR (
     id_profesor INT IDENTITY(1,1) PRIMARY KEY,
-    id_persona INT NOT NULL,
+    id_persona INT UNIQUE NOT NULL,
     FOREIGN KEY (id_persona) REFERENCES PERSONA(id_persona)
 );
 
@@ -87,7 +87,7 @@ CREATE TABLE PAGO (
 CREATE TABLE CLASE (
     id_clase INT IDENTITY(1,1) PRIMARY KEY,
     id_profesor INT NOT NULL,
-    diasemana VARCHAR(15) NOT NULL,
+    dia_semana VARCHAR(15) NOT NULL,
     hora_inicio TIME NOT NULL,
     hora_fin TIME NOT NULL,
     cupomax INT NOT NULL,
