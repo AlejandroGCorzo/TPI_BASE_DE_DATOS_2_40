@@ -1,0 +1,39 @@
+  Tras analizar a fondo el diseño físico del DDL, el comportamiento de las vistas de reporte y las reglas semánticas de la
+  lógica programable, encontré varias incongruencias de diseño y problemas de integridad que deberíamos corregir si queremos
+  que este sistema sea robusto en producción
+
+  ### 1. Error Lógico Crítico en Vistas de Socios Vencidos y por Vencer
+
+  Las vistas  socio_plan_vencido  y  socio_proximo_a_vencer  consultan la tabla  PAGO  directamente mediante un  JOIN  clásico.
+
+  • El problema Si un socio tiene un historial de 10 pagos anteriores ya vencidos y hoy realiza un pago nuevo y vigente, la
+  vista  socio_plan_vencido  lo va a seguir listando como vencido debido a los registros viejos en la tabla  PAGO .
+  • La solución Ambas vistas deben filtrar o agrupar para evaluar únicamente el pago más reciente (el vencimiento máximo) de
+  cada socio.
+
+  ### 2. Falta de Restricción  UNIQUE  en la Relación de Especialización (11)
+
+  Tanto  SOCIO  como  PROFESOR  tienen una clave foránea  id_persona  que apunta a  PERSONA .
+
+  • El problema No hay restricciones  UNIQUE  sobre  id_persona  en ninguna de estas dos tablas. Físicamente, podrías
+  registrar el mismo  id_persona  como 5 socios diferentes o 3 profesores diferentes, lo cual rompe la integridad del modelo
+  conceptual de herencia.
+  • La solución Agregar restricciones  UNIQUE(id_persona)  en las tablas  SOCIO  y  PROFESOR .
+
+  ### 3. Inconsistencia en la Nomenclatura del Modelo
+
+  • El problema En la tabla  CLASE  la columna se llama  diasemana  (sin guion bajo), mientras que en  TURNOS_PROFESOR  se
+  llama  dia_semana  (con guion bajo).
+  • La solución Homogeneizar los nombres para facilitar las consultas y evitar bugs de escritura al programar joins.
+
+  ### 4. Ausencia de Clave Compuesta Única en Inscripciones
+
+  • El problema La tabla  INSCRIPTOACLASE  no tiene restricciones físicas que impidan que un mismo socio se anote múltiples
+  veces a la misma clase. Si bien lo validamos en el SP de inscripción, si alguien inserta directo en la tabla con un DML
+  limpio, saltándose el SP, la base de datos lo va a permitir.
+  • La solución Agregar una restricción  UNIQUE (id_socio, id_clase)  en  INSCRIPTOACLASE .
+
+  ### 5. Falta de Restricciones de Dominio ( CHECK )
+
+  • El problema Campos como  PAGO.descuento  (que no debería ser menor a 0 ni mayor a 100) o  CLASE.cupomax  (que debería ser
+  estrictamente mayor a 0) carecen de restricciones  CHECK  físicas a nivel de tabla.
