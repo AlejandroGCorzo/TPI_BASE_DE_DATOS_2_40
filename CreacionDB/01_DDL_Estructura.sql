@@ -77,7 +77,7 @@ CREATE TABLE PAGO (
     precio_con_IVA DECIMAL(10, 2) NOT NULL,
     precio_sin_IVA DECIMAL(10, 2) NOT NULL,
     pago_final DECIMAL(10, 2) NOT NULL,
-    descuento INT DEFAULT 0,
+    descuento INT DEFAULT 0 CHECK(descuento >= 0 AND descuento <= 100),
     motivo_descuento VARCHAR(255),
     FOREIGN KEY (id_plan) REFERENCES [PLAN](id_plan),
     FOREIGN KEY (id_metodo) REFERENCES METODO_PAGO(id_metodo),
@@ -90,7 +90,7 @@ CREATE TABLE CLASE (
     dia_semana VARCHAR(15) NOT NULL,
     hora_inicio TIME NOT NULL,
     hora_fin TIME NOT NULL,
-    cupomax INT NOT NULL,
+    cupomax INT NOT NULL CHECK(cupomax > 0),
     FOREIGN KEY (id_profesor) REFERENCES PROFESOR(id_profesor)
 );
 
@@ -117,6 +117,7 @@ CREATE TABLE INSCRIPTOACLASE (
     id_clase INT NOT NULL,
     fecha_inscripcion DATETIME DEFAULT GETDATE() NOT NULL,
     FOREIGN KEY (id_socio) REFERENCES SOCIO(id_socio),
-    FOREIGN KEY (id_clase) REFERENCES CLASE(id_clase)
+    FOREIGN KEY (id_clase) REFERENCES CLASE(id_clase),
+    UNIQUE (id_socio, id_clase)
 );
 GO
