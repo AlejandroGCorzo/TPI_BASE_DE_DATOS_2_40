@@ -2,7 +2,7 @@ USE GimnasioDB;
 GO
 
 -- ==========================================================================================
--- 1. PROCEDIMIENTO ALMACENADO: sp_RegistrarPago
+-- 1.1 PROCEDIMIENTO ALMACENADO: sp_RegistrarPago
 -- ==========================================================================================
 IF OBJECT_ID('sp_RegistrarPago', 'P') IS NOT NULL
 BEGIN
@@ -28,8 +28,6 @@ BEGIN
     DECLARE @precio_sin_IVA DECIMAL(10, 2);
     DECLARE @pago_final DECIMAL(10, 2);
     
-    DECLARE @id_pago_a_desactivar INT = NULL;
-
     -- Validaciones de existencia de claves foráneas
     IF NOT EXISTS (SELECT 1 FROM SOCIO WHERE id_socio = @id_socio)
     BEGIN
@@ -56,37 +54,7 @@ BEGIN
         RETURN;
     END
 
-    -- Si el socio tiene un plan complementario activo, pasa automáticamente a Plan Libre (id_plan = 3)
-    IF @id_plan = 1 -- Intenta comprar Plan Musculación
-    BEGIN
-        SELECT TOP 1 @id_pago_a_desactivar = id_pago
-        FROM PAGO
-        WHERE id_socio = @id_socio
-          AND id_plan = 2 -- Tiene Plan Crossfit activo
-          AND fecha_vencimiento >= @fecha_pago
-        ORDER BY fecha_vencimiento DESC;
-
-        IF @id_pago_a_desactivar IS NOT NULL
-        BEGIN
-            SET @id_plan = 3; -- Cambia automáticamente a Plan Libre
-        END
-    END
-    ELSE IF @id_plan = 2 -- Intenta comprar Plan Crossfit
-    BEGIN
-        SELECT TOP 1 @id_pago_a_desactivar = id_pago
-        FROM PAGO
-        WHERE id_socio = @id_socio
-          AND id_plan = 1 -- Tiene Plan Musculación activo
-          AND fecha_vencimiento >= @fecha_pago
-        ORDER BY fecha_vencimiento DESC;
-
-        IF @id_pago_a_desactivar IS NOT NULL
-        BEGIN
-            SET @id_plan = 3; -- Cambia automáticamente a Plan Libre
-        END
-    END
-
-    -- Obtener datos del plan (ya resuelto, sea el original o el Libre tras la conversión)
+    -- Obtener datos del plan
     SELECT @precio_plan = precio_plan, @duracion_meses = duracion_meses
     FROM [PLAN]
     WHERE id_plan = @id_plan;
@@ -100,14 +68,6 @@ BEGIN
     -- Inserción del pago dentro de bloque transaccional
     BEGIN TRY
         BEGIN TRANSACTION;
-        
-        -- Si hay un plan complementario anterior que desactivar, lo vencemos ayer para evitar solapamientos
-        IF @id_pago_a_desactivar IS NOT NULL
-        BEGIN
-            UPDATE PAGO 
-            SET fecha_vencimiento = DATEADD(day, -1, @fecha_pago) 
-            WHERE id_pago = @id_pago_a_desactivar;
-        END
         
         INSERT INTO PAGO (id_plan, id_metodo, id_socio, fecha_pago, fecha_vencimiento, precio_con_IVA, precio_sin_IVA, pago_final, descuento, motivo_descuento)
         VALUES (@id_plan, @id_metodo, @id_socio, @fecha_pago, @fecha_vencimiento, @precio_con_IVA, @precio_sin_IVA, @pago_final, @descuento, @motivo_descuento);
@@ -243,7 +203,7 @@ BEGIN
     DECLARE @diasemana VARCHAR(15);
     DECLARE @hora_inicio TIME;
     
-    SELECT @diasemana = diasemana, @hora_inicio = hora_inicio
+    SELECT @diasemana = dia_semana, @hora_inicio = hora_inicio
     FROM CLASE
     WHERE id_clase = @id_clase;
 
@@ -354,7 +314,7 @@ END;
 GO
 
 -- ==========================================================================================
--- 2. TRIGGER: trg_ValidarPlanActivo (en PAGO)
+-- 2.1 TRIGGER: trg_ValidarPlanActivo (en PAGO)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ValidarPlanActivo', 'TR') IS NOT NULL
 BEGIN
@@ -371,28 +331,17 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
 
-    -- Validar si el socio ya tiene un plan vigente al momento de registrar el nuevo pago que cubra la misma disciplina
-    IF EXISTS (
+    -- Validar si el socio ya tiene un plan vigente al momento de registrar el nuevo pago.
+        IF EXISTS (
         SELECT 1
         FROM inserted ins
-        JOIN [PLAN] new_p ON ins.id_plan = new_p.id_plan
         JOIN PAGO p ON ins.id_socio = p.id_socio
-        JOIN [PLAN] old_p ON p.id_plan = old_p.id_plan
         WHERE p.id_pago <> ins.id_pago
-          AND p.fecha_vencimiento >= ins.fecha_pago
-          AND (
-              -- Colisión de disciplina Musculación
-              ((new_p.nombre LIKE '%Musculación%' OR new_p.nombre LIKE '%Libre%') AND 
-               (old_p.nombre LIKE '%Musculación%' OR old_p.nombre LIKE '%Libre%'))
-              OR
-              -- Colisión de disciplina Crossfit
-              ((new_p.nombre LIKE '%Crossfit%' OR new_p.nombre LIKE '%Libre%') AND 
-               (old_p.nombre LIKE '%Crossfit%' OR old_p.nombre LIKE '%Libre%'))
-          )
+          AND p.fecha_vencimiento >= CAST(GETDATE() AS DATE)
     )
     BEGIN
         ROLLBACK TRANSACTION;
-        RAISERROR('Error: El socio ya posee un plan activo y vigente que cubre una o más de las disciplinas seleccionadas.', 16, 1);
+        RAISERROR('Error: El socio ya posee un plan activo y vigente.', 16, 1);
         RETURN;
     END
 END;
@@ -400,7 +349,7 @@ GO
 
 
 -- ==========================================================================================
--- 3. TRIGGER: trg_ControlCupoClase (en INSCRIPTOACLASE)
+-- 2.2 TRIGGER: trg_ControlCupoClase (en INSCRIPTOACLASE)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ControlCupoClase', 'TR') IS NOT NULL
 BEGIN
@@ -441,7 +390,7 @@ GO
 
 
 -- ==========================================================================================
--- 4. TRIGGER: trg_ValidarIngreso (en INGRESO)
+-- 2.3 TRIGGER: trg_ValidarIngreso (en INGRESO)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ValidarIngreso', 'TR') IS NOT NULL
 BEGIN
@@ -483,7 +432,7 @@ GO
 
 
 -- ==========================================================================================
--- 5. TRIGGER: trg_ValidarTurnoProfesor (en CLASE)
+-- 2.4 TRIGGER: trg_ValidarTurnoProfesor (en CLASE)
 -- ==========================================================================================
 IF OBJECT_ID('trg_ValidarTurnoProfesor', 'TR') IS NOT NULL
 BEGIN
@@ -520,7 +469,7 @@ BEGIN
             SELECT 1
             FROM TURNOS_PROFESOR t
             WHERE t.id_profesor = ins.id_profesor
-              AND t.dia_semana = ins.diasemana
+              AND t.dia_semana = ins.dia_semana
               AND t.hora_inicio <= ins.hora_inicio
               AND t.hora_fin >= ins.hora_fin
         )
@@ -617,14 +566,14 @@ SELECT * FROM INGRESO;
 -- Profesor 1 trabaja Lunes y Miercoles de 06:00:00 a 12:00:00 en las semillas.
 
 -- 1. Intentamos crear una clase para Profesor 1 en su horario laboral (debería funcionar):
-INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+INSERT INTO CLASE (id_profesor, dia_semana, hora_inicio, hora_fin, cupomax)
 VALUES (1, 'Lunes', '09:00:00', '10:00:00', 10);
 
 -- 2. Intentamos crear una clase para Profesor 1 fuera de su horario laboral (debería fallar por el trigger):
-INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+INSERT INTO CLASE (id_profesor, dia_semana, hora_inicio, hora_fin, cupomax)
 VALUES (1, 'Lunes', '13:00:00', '14:00:00', 10);
 
 -- 3. Intentamos crear una clase para Profesor 1 en un día que no trabaja (debería fallar por el trigger):
-INSERT INTO CLASE (id_profesor, diasemana, hora_inicio, hora_fin, cupomax)
+INSERT INTO CLASE (id_profesor, dia_semana, hora_inicio, hora_fin, cupomax)
 VALUES (1, 'Martes', '09:00:00', '10:00:00', 10);
 */
