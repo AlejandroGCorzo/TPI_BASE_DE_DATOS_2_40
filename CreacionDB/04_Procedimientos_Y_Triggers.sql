@@ -28,7 +28,8 @@ BEGIN
     DECLARE @precio_sin_IVA DECIMAL(10, 2);
     DECLARE @pago_final DECIMAL(10, 2);
     
-    -- Validaciones de existencia de claves foráneas
+    -- Validaciones de existencia de claves foráneas 
+
     IF NOT EXISTS (SELECT 1 FROM SOCIO WHERE id_socio = @id_socio)
     BEGIN
         RAISERROR('Error: El socio especificado no existe.', 16, 1);
@@ -47,7 +48,8 @@ BEGIN
         RETURN;
     END
 
-    -- Validación del rango de descuento
+    -- Validación del rango de descuento 
+    
     IF @descuento < 0 OR @descuento > 100
     BEGIN
         RAISERROR('Error: El porcentaje de descuento debe estar comprendido entre 0 y 100.', 16, 1);

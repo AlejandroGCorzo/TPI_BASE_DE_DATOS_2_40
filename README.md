@@ -12,13 +12,13 @@ El sistema automatiza y centraliza la información necesaria para administrar lo
 
 ### Reglas Clave:
 * **Horario de operación**: El gimnasio opera en el horario de 6:00 a 23:00 horas.
-* **Simultaneidad de planes**: Un socio puede contratar ambos planes (Musculación y Crossfit) de forma simultánea, el plan Libre.
+* **Simultaneidad de planes**: Un socio no puede poseer más de un plan activo y vigente de forma simultánea. Para contar con acceso a ambas disciplinas, debe contratar el plan Libre.
 * **Disciplinas por plan**:
   * Los planes de 6 y 12 meses incluyen automáticamente ambas disciplinas (plan Libre).
   * El plan mensual permite elegir entre Musculación, Crossfit o Libre.
 * **Operaciones de los Socios**:
   * Registrarse en el sistema con sus datos personales y de contacto (DNI, nombre, apellido, teléfono, email).
-  * Contratar planes de Musculación, Crossfit o Ambos, con duraciones de 1 mes, 6 meses o 1 año. Los planes de 6 meses y 12 meses corresponden al plan Libre.
+  * Contratar planes de Musculación, Crossfit o el plan Libre, con duraciones de 1 mes, 6 meses o 1 año. Los planes de 6 meses y 12 meses corresponden al plan Libre.
   * Realizar pagos con distintos métodos (efectivo, débito, transferencia), con cálculo automático de la fecha de vencimiento.
   * Acceder al gimnasio mediante escaneo de DNI, validando la vigencia del plan y horario de apertura (6:00-23:00 hs).
   * Inscribirse a clases de Crossfit con horario fijo, profesor asignado y cupo limitado.
@@ -78,13 +78,14 @@ Para facilitar la administración del negocio, el script **[03_Vistas.sql](Creac
 Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el script **[04_Procedimientos_Y_Triggers.sql](CreacionDB/04_Procedimientos_Y_Triggers.sql)** agrega los siguientes componentes:
 
 ### 1. Procedimiento Almacenado `sp_RegistrarPago`
-* **Propósito**: Automatizar la compra y facturación de membresías, controlando la simultaneidad de planes.
+* **Propósito**: Automatizar el registro de pagos y la facturación de membresías de socios.
 * **Operación**:
-  - Recibe el socio, plan, medio de pago y el descuento opcional (de 0 a 100%).
-  - **Conversión Automática a Plan Libre**: Si un socio posee un plan individual activo (ej. *Crossfit*) y contrata el complementario (ej. *Musculación*), el sistema lo actualiza automáticamente a **Plan Libre (id_plan = 3)**. Dentro de la misma transacción, desactiva el plan anterior reduciendo su fecha de vencimiento al día de ayer para evitar colisiones.
-  - Busca el precio del plan y calcula dinámicamente el IVA (`precio_sin_IVA = precio_con_IVA / 1.21`).
-  - Proyecta la fecha de expiración (`fecha_vencimiento`) sumando la duración en meses del plan a la fecha de hoy.
-  - Inserta el registro completo de forma transaccional protegiendo la consistencia y atomicidad de los datos.
+  - Recibe el socio, plan, medio de pago, descuento opcional (de 0 a 100%) y motivo del descuento.
+  - Valida la existencia del socio, plan y método de pago.
+  - Valida que el porcentaje de descuento esté comprendido entre 0 y 100.
+  - Obtiene el precio base y la duración del plan.
+  - Calcula dinámicamente el IVA (`precio_sin_IVA = precio_con_IVA / 1.21` redondeado a 2 decimales), el pago final aplicando el descuento, y la fecha de vencimiento proyectada.
+  - Inserta el registro completo en la tabla `PAGO` de forma transaccional protegiendo la consistencia y atomicidad de los datos.
 
 ### 2. Procedimiento Almacenado `sp_InscribirSocioClase`
 * **Propósito**: Gestionar la inscripción de un socio a una clase de forma segura, validando los permisos de su membresía.
@@ -114,11 +115,10 @@ Para automatizar reglas críticas del negocio sin sobrecargar el cliente, el scr
   - Retorna y muestra el estado final del ingreso obtenido tras la evaluación.
 
 ### 5. Trigger `trg_ValidarPlanActivo` (en `PAGO`)
-* **Propósito**: Evitar la compra o superposición accidental de membresías de la misma disciplina para un mismo socio.
+* **Propósito**: Evitar la compra o superposición accidental de membresías para un socio que ya posee un plan activo.
 * **Operación**:
   - Se ejecuta `AFTER INSERT` en la tabla `PAGO`.
-  - Permite la contratación simultánea de planes de **diferentes disciplinas** (Musculación y Crossfit).
-  - Lanza un `ROLLBACK` y un error descriptivo si el socio intenta registrar un nuevo pago para un plan cuyas disciplinas ya están cubiertas por su plan activo vigente (ej. contratar dos planes de Musculación simultáneos o contratar cualquier plan individual teniendo ya un Plan Libre activo).
+  - Lanza un `ROLLBACK` y un error descriptivo si el socio intenta registrar un nuevo pago y ya cuenta con un plan activo y vigente a la fecha actual.
 
 ### 6. Trigger `trg_ControlCupoClase` (en `INSCRIPTOACLASE`)
 * **Propósito**: Impedir la sobre-inscripción a clases del gimnasio.
